@@ -1,0 +1,188 @@
+enable
+configure terminal
+
+hostname Santo-Domingo-SWL3-1
+service password-encryption
+enable secret empresa2cecompe
+banner motd #Acceso restringido#
+username admin privilege 15 secret empresa2cecompe
+ip domain-name CaribeComms-ServiceQuisqueya.com.do
+crypto key generate rsa modulus 2048
+ip ssh version 2
+ip ssh time-out 60
+ip ssh authentication-retries 3
+ip ssh dh min size 2048
+
+line con 0
+ password empresa2cecompe
+ login
+ logging synchronous
+ exec-timeout 5 0
+
+line vty 0 4
+ transport input ssh
+ login local
+ exec-timeout 5 0
+
+ip routing
+
+vlan 10
+ name CALL-CENTER-ATENCION-CLIENTE
+vlan 20
+ name TI-SISTEMAS
+vlan 30
+ name ADMINISTRACION-FINANZAS
+vlan 40
+ name VENTAS-DIRECTAS
+vlan 99
+ name MANAGEMENT
+vlan 999
+ name NATIVA-NO-USAR
+exit
+
+interface range e0/1-3
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ switchport trunk native vlan 999
+ switchport trunk allowed vlan 10,20,30,40,99
+ switchport trunk allowed vlan remove 1
+ channel-group 1 mode active
+ no shutdown
+exit
+
+interface Port-channel1
+ description ETHERCHANNEL-STD-SWL3-1-STD-SWL3-2
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ switchport trunk native vlan 999
+ switchport trunk allowed vlan 10,20,30,40,99
+ switchport trunk allowed vlan remove 1
+ no shutdown
+exit
+
+interface e0/0
+ description ENLACE-RUTEADO-R-SANTODOMINGO
+ no switchport
+ ip address 172.16.4.178 255.255.255.252
+ duplex full
+ no shutdown
+exit
+
+interface Vlan10
+ ip address 172.16.0.2 255.255.255.0
+ ip access-group ACL-CALLCENTER in
+ ip helper-address 1.1.1.1
+ standby 10 ip 172.16.0.1
+ standby 10 priority 110
+ standby 10 preempt
+ no shutdown
+exit
+
+interface Vlan20
+ ip address 172.16.2.130 255.255.255.128
+ ip access-group ACL-TISISTEMAS in
+ ip helper-address 1.1.1.1
+ standby 20 ip 172.16.2.129
+ standby 20 priority 110
+ standby 20 preempt
+ no shutdown
+exit
+
+interface Vlan30
+ ip address 172.16.1.130 255.255.255.128
+ ip access-group ACL-ADMINISTRACION in
+ ip helper-address 1.1.1.1
+ standby 30 ip 172.16.1.129
+ standby 30 priority 110
+ standby 30 preempt
+ no shutdown
+exit
+
+interface Vlan40
+ ip address 172.16.1.2 255.255.255.128
+ ip access-group ACL-VENTAS in
+ ip helper-address 1.1.1.1
+ standby 40 ip 172.16.1.1
+ standby 40 priority 110
+ standby 40 preempt
+ no shutdown
+exit
+
+interface Vlan99
+ ip address 172.16.4.185 255.255.255.248
+ no shutdown
+exit
+
+spanning-tree mode rapid-pvst
+spanning-tree vlan 10,20,30,40,99 root primary
+
+router ospf 1
+ router-id 1.1.1.20
+ network 172.16.0.0   0.0.0.255   area 5
+ network 172.16.1.0   0.0.0.127   area 5
+ network 172.16.1.128 0.0.0.127   area 5
+ network 172.16.2.128 0.0.0.127   area 5
+ network 172.16.4.176 0.0.0.3    area 5
+ network 172.16.4.184 0.0.0.7    area 5
+ passive-interface Vlan10
+ passive-interface Vlan20
+ passive-interface Vlan30
+ passive-interface Vlan40
+ passive-interface Vlan99
+exit
+
+interface range e1/0-2
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ switchport trunk native vlan 999
+ switchport trunk allowed vlan 10,20,30,40,99
+ switchport trunk allowed vlan remove 1
+ no shutdown
+exit
+
+ip access-list extended ACL-CALLCENTER
+ permit udp any eq 68 any eq 67
+ permit udp any eq 67 any eq 68
+ permit udp 172.16.0.0 0.0.0.255 any range 5004 5082
+ permit tcp 172.16.0.0 0.0.0.255 any eq 443
+ permit tcp 172.16.0.0 0.0.0.255 any eq 80
+ permit udp 172.16.0.0 0.0.0.255 any eq 53
+ deny ip 172.16.0.0 0.0.0.255 172.16.4.96 0.0.0.15
+ deny ip 172.16.0.0 0.0.0.255 172.16.1.128 0.0.0.127
+ permit ip 172.16.0.0 0.0.0.255 any
+exit
+
+ip access-list extended ACL-VENTAS
+ permit udp any eq 68 any eq 67
+ permit udp any eq 67 any eq 68
+ permit tcp 172.16.1.0 0.0.0.127 any eq 443
+ permit tcp 172.16.1.0 0.0.0.127 any eq 80
+ permit udp 172.16.1.0 0.0.0.127 any eq 53
+ deny ip 172.16.1.0 0.0.0.127 172.16.4.96 0.0.0.15
+ deny ip 172.16.1.0 0.0.0.127 172.16.1.128 0.0.0.127
+ permit ip 172.16.1.0 0.0.0.127 any
+exit
+
+ip access-list extended ACL-ADMINISTRACION
+ permit udp any eq 68 any eq 67
+ permit udp any eq 67 any eq 68
+ permit tcp 172.16.1.128 0.0.0.127 any eq 443
+ permit tcp 172.16.1.128 0.0.0.127 any eq 25
+ permit tcp 172.16.1.128 0.0.0.127 any eq 143
+ permit udp 172.16.1.128 0.0.0.127 any eq 53
+ deny ip 172.16.1.128 0.0.0.127 172.16.4.96 0.0.0.15
+ deny ip 172.16.1.128 0.0.0.127 172.16.0.0 0.0.0.255
+ deny ip 172.16.1.128 0.0.0.127 172.16.1.0 0.0.0.127
+ permit ip 172.16.1.128 0.0.0.127 any
+exit
+
+ip access-list extended ACL-TISISTEMAS
+ permit udp any eq 68 any eq 67
+ permit udp any eq 67 any eq 68
+ permit tcp 172.16.2.128 0.0.0.127 any eq 22
+ permit ip 172.16.2.128 0.0.0.127 172.16.0.0 0.15.255.255
+ permit ip 172.16.2.128 0.0.0.127 any
+exit
+
+end
+write memory

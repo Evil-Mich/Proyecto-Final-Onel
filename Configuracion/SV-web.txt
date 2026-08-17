@@ -1,0 +1,178 @@
+SV-web
+
+1. Configuración de Red y Salida a Internet
+A. Configurar Netplan (IP Pública)
+Comando para editar: sudo nano /etc/netplan/01-network-manager-all.yaml
+
+YAML
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    ens3:
+      dhcp4: no
+      addresses:
+        - 17.6.0.38/30
+      routes:
+        - to: 0.0.0.0/0
+          via: 17.6.0.37
+      nameservers:
+        addresses:
+          - 8.8.8.8
+          - 1.1.1.1
+(Nota: Asegúrate de que tu interfaz se llame ens3 o eth0, cámbialo según corresponda en tu nodo).
+Comando para aplicar: sudo netplan apply
+
+B. Forzar DNS para poder descargar Apache
+Comandos directos en la terminal:
+
+Bash
+sudo rm -f /etc/resolv.conf
+echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
+ping -c 2 google.com
+(Espera a que el ping te responda exitosamente antes de continuar).
+
+2. Instalación del Servidor Web (Apache2)
+Comandos directos en la terminal para actualizar e instalar el motor web:
+
+Bash
+sudo apt update
+sudo apt install apache2 -y
+3. Configuración del Sitio Web Corporativo
+A. Crear la página oficial
+Archivo: /var/www/html/index.html
+Comando para editar: sudo nano /var/www/html/index.html
+(Borra cualquier contenido de bienvenida que tenga Ubuntu por defecto y pega este código exacto)
+
+HTML
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CaribeServices & Comms</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background-color: #0b131b; color: #ffffff; margin: 0; padding: 0; display: flex; flex-direction: column; align-items: center; }
+        header { background: linear-gradient(135deg, #0f4c75, #3282b8); width: 100%; padding: 30px 0; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+        header h1 { margin: 0; font-size: 2.8rem; letter-spacing: 2px; color: #bbe1fa; text-transform: uppercase; }
+        header p { margin: 8px 0 0 0; font-size: 1.1rem; color: #e2f1f8; }
+        .container { max-width: 900px; margin: 40px 20px; background-color: #1b262c; padding: 40px; border-radius: 12px; border-top: 5px solid #0f4c75; text-align: center; }
+        .section { margin-bottom: 35px; text-align: left; background: rgba(15, 76, 117, 0.15); padding: 20px 25px; border-radius: 8px; border-left: 4px solid #3282b8; }
+        .section h2 { color: #3282b8; margin-top: 0; font-size: 1.4rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px; }
+        .section p, .section ul { font-size: 1.05rem; line-height: 1.6; color: #d1d8e0; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>CaribeServices & Comms</h1>
+        <p>Infraestructura Tecnológica y Comunicaciones de Alta Disponibilidad</p>
+    </header>
+    <div class="container">
+        <!-- Espacio para la imagen del árbol de la vida -->
+        <img src="arbol.jpg" alt="Árbol de la Vida" style="width: 250px; height: 250px; border-radius: 50%; border: 4px solid #3282b8; margin-bottom: 20px; object-fit: cover; box-shadow: 0 0 20px rgba(50, 130, 184, 0.4);">
+        
+        <div class="section">
+            <h2>Misión</h2>
+            <p>Proveer experiencias de comunicación excepcionales y servicios comerciales eficientes a través de una infraestructura tecnológica robusta y segura.</p>
+        </div>
+        <div class="section">
+            <h2>Visión</h2>
+            <p>Ser el proveedor líder de servicios de centros de contacto y soluciones telemáticas en la República Dominicana, reconocidos por nuestra alta disponibilidad y calidad.</p>
+        </div>
+        <div class="section">
+            <h2>Valores</h2>
+            <ul>
+                <li>Innovación tecnológica</li>
+                <li>Trabajo en equipo</li>
+                <li>Orientación al Cliente</li>
+                <li>Confiabilidad y seguridad</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>
+B. Reiniciar y habilitar el servicio Web
+Comandos para activar:
+
+Bash
+sudo systemctl restart apache2
+sudo systemctl enable apache2
+
+Bash
+
+cat << 'EOF' | sudo tee /var/www/html/index.html
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CaribeServices & Comms</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background-color: #0b131b; color: #ffffff; margin: 0; padding: 0; display: flex; flex-direction: column; align-items: center; }
+        header { background: linear-gradient(135deg, #0f4c75, #3282b8); width: 100%; padding: 30px 0; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+        header h1 { margin: 0; font-size: 2.8rem; letter-spacing: 2px; color: #bbe1fa; text-transform: uppercase; }
+        header p { margin: 8px 0 0 0; font-size: 1.1rem; color: #e2f1f8; }
+        .container { max-width: 900px; margin: 40px 20px; background-color: #1b262c; padding: 40px; border-radius: 12px; border-top: 5px solid #0f4c75; text-align: center; }
+        .section { margin-bottom: 35px; text-align: left; background: rgba(15, 76, 117, 0.15); padding: 20px 25px; border-radius: 8px; border-left: 4px solid #3282b8; }
+        .section h2 { color: #3282b8; margin-top: 0; font-size: 1.4rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px; }
+        .section p, .section ul { font-size: 1.05rem; line-height: 1.6; color: #d1d8e0; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>CaribeServices & Comms</h1>
+        <p>Infraestructura Tecnológica y Comunicaciones de Alta Disponibilidad</p>
+    </header>
+    <div class="container">
+        <!-- Recuerda subir manualmente la imagen arbol.jpg a /var/www/html/ -->
+        <img src="arbol.jpg" alt="Árbol de la Vida" style="width: 250px; height: 250px; border-radius: 50%; border: 4px solid #3282b8; margin-bottom: 20px; object-fit: cover; box-shadow: 0 0 20px rgba(50, 130, 184, 0.4);">
+        
+        <div class="section">
+            <h2>Misión</h2>
+            <p>Proveer experiencias de comunicación excepcionales y servicios comerciales eficientes a través de una infraestructura tecnológica robusta y segura.</p>
+        </div>
+        <div class="section">
+            <h2>Visión</h2>
+            <p>Ser el proveedor líder de servicios de centros de contacto y soluciones telemáticas en la República Dominicana, reconocidos por nuestra alta disponibilidad y calidad.</p>
+        </div>
+        <div class="section">
+            <h2>Valores</h2>
+            <ul>
+                <li>Innovación tecnológica</li>
+                <li>Trabajo en equipo</li>
+                <li>Orientación al Cliente</li>
+                <li>Confiabilidad y seguridad</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>
+EOF
+4. Cargar la Imagen del Diseño
+Para que la página web muestre el logo correctamente, debes colocar la imagen en la carpeta pública de Apache.
+
+Renombra la imagen en tu computadora a arbol.jpg.
+
+Súbela al contenedor del Servidor Web en PNETLab.
+
+Asegúrate de moverla a la ruta exacta usando este comando:
+
+
+sudo mv arbol.jpg /var/www/html/arbol.jpg
+Dale los permisos de lectura para que cualquiera que entre a la web la pueda ver:
+
+Bash
+sudo chmod 644 /var/www/html/arbol.jpg
+echo "17.6.0.38 www.CaribeComms-ServiceQuisqueya.com.do" | sudo tee -a /etc/hosts
+
+
+
+# 4. Reiniciar y habilitar el servicio para que arranque automático
+sudo systemctl restart apache2
+sudo systemctl enable apache2
+sudo systemctl status apache2 
+
+
+sudo chmod -R 755 /var/www/html/
+
+

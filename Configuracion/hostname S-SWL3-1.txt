@@ -1,0 +1,198 @@
+enable
+configure terminal
+
+hostname S-SWL3-1
+no ip domain-lookup
+service password-encryption
+enable secret empresa2cecompe
+banner motd #Acceso restringido - S-SWL3-1#
+username admin privilege 15 secret empresa2cecompe
+ip domain-name CaribeComms-ServiceQuisqueya.com.do
+crypto key generate rsa modulus 2048
+ip ssh version 2
+ip ssh time-out 60
+ip ssh authentication-retries 3
+ip ssh dh min size 2048
+
+line con 0
+ password empresa2cecompe
+ login authentication default
+ logging synchronous
+ exec-timeout 5 0
+exit
+
+line vty 0 4
+ transport input ssh
+ login authentication default
+ exec-timeout 5 0
+exit
+
+ip routing
+
+! =====================================================
+! AUTENTICACION AAA (RADIUS con respaldo Local)
+! =====================================================
+aaa new-model
+
+radius server kpinini-server
+ address ipv4 172.16.4.100 auth-port 1812 acct-port 1813
+ key empresa2cecompe
+exit
+
+aaa authentication login default group radius local
+
+! =====================================================
+! CREACION DE VLAN FISICAS
+! =====================================================
+vlan 10
+ name VENTAS
+exit
+vlan 20
+ name ADMINISTRACION
+exit
+vlan 30
+ name CENTRO_DATOS
+exit
+vlan 40
+ name SERVIDOR_UNICO
+exit
+vlan 999
+ name BLACKHOLE
+exit
+
+! =====================================================
+! ACL DEPURADAS
+! =====================================================
+ip access-list extended ACL_VENTAS
+ permit udp any any eq 67
+ permit udp any any eq 68
+ deny ip 172.16.4.0 0.0.0.31 172.16.4.112 0.0.0.15
+ deny ip 172.16.4.0 0.0.0.31 172.16.4.32 0.0.0.15
+ permit ip 172.16.4.0 0.0.0.31 any
+exit
+
+ip access-list extended ACL_ADMINISTRACION
+ permit udp any any eq 67
+ permit udp any any eq 68
+ deny ip 172.16.4.112 0.0.0.15 172.16.4.0 0.0.0.31
+ deny ip 172.16.4.112 0.0.0.15 172.16.4.32 0.0.0.15
+ permit ip 172.16.4.112 0.0.0.15 any
+exit
+
+ip access-list extended ACL_DATACENTER
+ permit udp any any eq 67
+ permit udp any any eq 68
+ permit ip any any
+exit
+
+! =====================================================
+! ENLACE RUTEADO Y ETHERCHANNEL (3 CABLES)
+! =====================================================
+interface e0/0
+ description ENLACE-R-SANTIAGO
+ no switchport
+ ip address 172.16.4.242 255.255.255.252
+ no shutdown
+exit
+
+interface range e0/1 - 3
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ switchport trunk native vlan 999
+ switchport trunk allowed vlan 10,20,30,40,999
+ channel-group 1 mode active
+ no shutdown
+exit
+
+interface port-channel 1
+ description ETHERCHANNEL-SANTIAGO-SWL3-2
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ switchport trunk native vlan 999
+ switchport trunk allowed vlan 10,20,30,40,999
+ no shutdown
+exit
+
+! =====================================================
+! PUERTOS DE ACCESO
+! =====================================================
+interface range e1/0 , e2/0 , e2/1
+ switchport mode access
+ switchport access vlan 10
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+ no shutdown
+exit
+
+interface range e1/1 - 3
+ switchport mode access
+ switchport access vlan 20
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+ no shutdown
+exit
+
+! =====================================================
+! SVIs, HSRP y Helpers
+! =====================================================
+interface vlan 10
+ ip address 172.16.4.2 255.255.255.224
+ ip helper-address 172.16.4.100
+ standby 10 ip 172.16.4.1
+ standby 10 priority 110
+ standby 10 preempt
+ ip access-group ACL_VENTAS in
+ no shutdown
+exit
+
+interface vlan 20
+ ip address 172.16.4.114 255.255.255.240
+ ip helper-address 172.16.4.100
+ standby 20 ip 172.16.4.113
+ standby 20 priority 110
+ standby 20 preempt
+ ip access-group ACL_ADMINISTRACION in
+ no shutdown
+exit
+
+interface vlan 30
+ ip address 172.16.4.34 255.255.255.240
+ ip helper-address 172.16.4.100
+ standby 30 ip 172.16.4.33
+ standby 30 priority 100
+ standby 30 preempt
+ ip access-group ACL_DATACENTER in
+ ip ospf priority 255
+ no shutdown
+exit
+
+interface vlan 40
+ ip address 172.16.4.98 255.255.255.240
+ standby 40 ip 172.16.4.97
+ standby 40 priority 100
+ standby 40 preempt
+ ip access-group ACL_DATACENTER in
+ no shutdown
+exit
+
+! =====================================================
+! OSPF Y SPANNING TREE
+! =====================================================
+router ospf 10
+ router-id 4.4.4.1
+ network 172.16.4.240 0.0.0.3 area 0
+ network 172.16.4.0 0.0.0.31 area 40
+ network 172.16.4.112 0.0.0.15 area 40
+ network 172.16.4.32 0.0.0.15 area 40
+ network 172.16.4.96 0.0.0.15 area 40
+ passive-interface vlan 10
+ passive-interface vlan 20
+ passive-interface vlan 40
+ no passive-interface vlan 30
+exit
+
+spanning-tree vlan 10,20 root primary
+spanning-tree vlan 30,40 root secondary
+
+end
+write memory

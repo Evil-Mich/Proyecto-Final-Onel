@@ -1,0 +1,203 @@
+enable
+configure terminal
+
+hostname R-Barahona
+
+no ip domain-lookup
+service password-encryption
+
+enable secret Rey20
+
+banner motd #Acceso restringido - Sede Barahona#
+
+username REY privilege 15 secret Rey20
+
+ip domain-name CaribeComms-ServiceQuisqueya.com.do
+
+crypto key generate rsa modulus 2048
+
+ip ssh version 2
+ip ssh time-out 60
+ip ssh authentication-retries 3
+ip ssh dh min size 2048
+
+
+line con 0
+ password Rey20
+ login
+ logging synchronous
+ exec-timeout 5 0
+exit
+
+
+line vty 0 4
+ transport input ssh
+ login local
+ exec-timeout 5 0
+exit
+
+
+! =====================================================
+! ENLACE WAN HACIA ISP
+! =====================================================
+
+interface e0/0
+ description ENLACE-ISP-BARAHONA
+ ip address 172.16.4.161 255.255.255.252
+ ip nat outside
+ no shutdown
+exit
+
+
+! =====================================================
+! ENLACE RUTEADO HACIA R-SW1
+! =====================================================
+
+interface e0/1
+ description ENLACE-R-SW1-BARAHONA
+ ip address 172.16.4.209 255.255.255.252
+ ip nat inside
+ ip ospf cost 20
+ no shutdown
+exit
+
+! =====================================================
+! ENLACE RUTEADO HACIA R-SW2
+! =====================================================
+
+interface e0/2
+ description ENLACE-R-SW2-BARAHONA
+ ip address 172.16.4.213 255.255.255.252
+ ip nat inside
+ ip ospf cost 20
+ no shutdown
+exit
+
+! =====================================================
+! DHCP
+! =====================================================
+
+ip dhcp excluded-address 172.16.3.65 172.16.3.67
+ip dhcp excluded-address 172.16.3.225 172.16.3.227
+ip dhcp excluded-address 172.16.4.65 172.16.4.67
+
+
+! --- PRODUCCION / ATENCION AL CLIENTE ---
+
+ip dhcp pool PRODUCCION
+ network 172.16.3.64 255.255.255.192
+ default-router 172.16.3.65
+ dns-server 8.8.8.8 8.8.4.4
+ domain-name CaribeComms-ServiceQuisqueya.com.do
+exit
+
+
+! --- ADMINISTRACION / FACTURACION ---
+
+ip dhcp pool ADMINISTRACION
+ network 172.16.3.224 255.255.255.224
+ default-router 172.16.3.225
+ dns-server 8.8.8.8 8.8.4.4
+ domain-name CaribeComms-ServiceQuisqueya.com.do
+exit
+
+
+! --- SEGURIDAD / SOPORTE TI ---
+
+ip dhcp pool SEGURIDAD
+ network 172.16.4.64 255.255.255.240
+ default-router 172.16.4.65
+ dns-server 8.8.8.8 8.8.4.4
+ domain-name CaribeComms-ServiceQuisqueya.com.do
+exit
+
+
+! =====================================================
+! NAT PAT
+! =====================================================
+
+access-list 1 permit 172.16.3.64 0.0.0.63
+access-list 1 permit 172.16.3.224 0.0.0.31
+access-list 1 permit 172.16.4.64 0.0.0.15
+
+
+ip nat pool NAT-BARAHONA 17.6.0.33 17.6.0.34 netmask 255.255.255.252
+
+ip nat inside source list 1 pool NAT-BARAHONA overload
+
+
+! =====================================================
+! DMVPN - SPOKE BARAHONA
+! =====================================================
+
+crypto isakmp policy 10
+ encryption aes 256
+ hash sha256
+ authentication pre-share
+ group 14
+ lifetime 86400
+exit
+
+
+crypto isakmp key EMPRESA2#DMVPN2026! address 172.16.4.145
+
+
+crypto ipsec transform-set TS-DMVPN esp-aes 256 esp-sha-hmac
+ mode transport
+exit
+
+
+crypto ipsec profile IPSEC-PROFILE-DMVPN
+ set transform-set TS-DMVPN
+exit
+
+
+interface Tunnel0
+ description DMVPN-SPOKE-BARAHONA
+ ip address 172.16.4.197 255.255.255.240
+ ip mtu 1400
+ ip tcp adjust-mss 1360
+
+ ip nhrp network-id 1
+ ip nhrp authentication cecompe
+
+ ip nhrp nhs 172.16.4.193
+ ip nhrp map 172.16.4.193 172.16.4.145
+ ip nhrp map multicast 172.16.4.145
+
+ ip ospf network broadcast
+ ip ospf priority 0
+
+ tunnel source e0/0
+ tunnel mode gre multipoint
+ tunnel protection ipsec profile IPSEC-PROFILE-DMVPN
+
+ no shutdown
+exit
+
+
+! =====================================================
+! OSPF MULTI-AREA
+! =====================================================
+
+router ospf 10
+ router-id 5.5.5.5
+ network 172.16.4.208 0.0.0.3 area 0
+ network 172.16.4.212 0.0.0.3 area 0
+ network 172.16.4.192 0.0.0.15 area 0
+ network 172.16.3.64 0.0.0.63 area 10
+ network 172.16.3.224 0.0.0.31 area 20
+ network 172.16.4.64 0.0.0.15 area 30
+ default-information originate
+exit
+
+
+! =====================================================
+! RUTA POR DEFECTO HACIA ISP
+! =====================================================
+
+ip route 0.0.0.0 0.0.0.0 172.16.4.162
+
+
+end
+write memory

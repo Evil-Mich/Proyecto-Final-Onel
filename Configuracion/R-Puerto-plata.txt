@@ -1,0 +1,153 @@
+enable
+configure terminal
+
+hostname R-PuertoPlata
+no ip domain-lookup
+service password-encryption
+enable secret empresa2cecompe
+banner motd #Acceso restringido - Sede Puerto Plata#
+username admin privilege 15 secret empresa2cecompe
+ip domain-name CaribeComms-ServiceQuisqueya.com.do
+crypto key generate rsa modulus 2048
+ip ssh version 2
+ip ssh time-out 60
+ip ssh authentication-retries 3
+ip ssh dh min size 2048
+
+line con 0
+ password empresa2cecompe
+ login
+ logging synchronous
+ exec-timeout 5 0
+exit
+
+line vty 0 4
+ transport input ssh
+ login local
+ exec-timeout 5 0
+exit
+
+! =====================================================
+! ENLACE WAN HACIA ISP
+! =====================================================
+interface e0/0
+ description ENLACE-ISP-PUERTOPLATA
+ ip address 172.16.4.157 255.255.255.252
+ ip nat outside
+ no shutdown
+exit
+
+! =====================================================
+! ENLACES RUTEADOS HACIA SWITCHES
+! =====================================================
+interface e0/1
+ 
+ip address 172.16.4.217 255.255.255.252
+ ip nat inside
+ ip ospf cost 20
+ no shutdown
+exit
+
+interface e0/2
+ description ENLACE-P-SW2-PUERTOPLATA
+ ip address 172.16.4.221 255.255.255.252
+ ip nat inside
+ ip ospf cost 20
+ no shutdown
+exit
+
+! =====================================================
+! DHCP POOLS (Nombres Corporativos)
+! =====================================================
+ip dhcp excluded-address 172.16.3.193 172.16.3.195
+ip dhcp excluded-address 172.16.3.1 172.16.3.3
+ip dhcp excluded-address 172.16.4.49 172.16.4.51
+
+ip dhcp pool BACKOFFICE
+ network 172.16.3.192 255.255.255.224
+ default-router 172.16.3.193
+ dns-server 8.8.8.8 8.8.4.4
+ domain-name CaribeComms-ServiceQuisqueya.com.do
+exit
+
+ip dhcp pool OPERACIONES_CX
+ network 172.16.3.0 255.255.255.192
+ default-router 172.16.3.1
+ dns-server 8.8.8.8 8.8.4.4
+ domain-name CaribeComms-ServiceQuisqueya.com.do
+exit
+
+ip dhcp pool SOPORTE_TI
+ network 172.16.4.48 255.255.255.240
+ default-router 172.16.4.49
+ dns-server 8.8.8.8 8.8.4.4
+ domain-name CaribeComms-ServiceQuisqueya.com.do
+exit
+
+! =====================================================
+! NAT PAT SALIENTE
+! =====================================================
+access-list 1 permit 172.16.3.192 0.0.0.31
+access-list 1 permit 172.16.3.0 0.0.0.63
+access-list 1 permit 172.16.4.48 0.0.0.15
+
+ip nat pool NAT-PUERTOPLATA 17.6.0.29 17.6.0.30 netmask 255.255.255.252
+ip nat inside source list 1 pool NAT-PUERTOPLATA overload
+
+! =====================================================
+! DMVPN - SPOKE PUERTO PLATA
+! =====================================================
+crypto isakmp policy 10
+ encryption aes 256
+ hash sha256
+ authentication pre-share
+ group 14
+ lifetime 86400
+exit
+
+crypto isakmp key EMPRESA2#DMVPN2026! address 172.16.4.145
+
+crypto ipsec transform-set TS-DMVPN esp-aes 256 esp-sha-hmac
+ mode transport
+exit
+
+crypto ipsec profile IPSEC-PROFILE-DMVPN
+ set transform-set TS-DMVPN
+exit
+
+interface Tunnel0
+ description DMVPN-SPOKE-PUERTOPLATA
+ ip address 172.16.4.199 255.255.255.240
+ ip mtu 1400
+ ip tcp adjust-mss 1360
+ ip nhrp network-id 1
+ ip nhrp authentication cecompe
+ ip nhrp nhs 172.16.4.193
+ ip nhrp map 172.16.4.193 172.16.4.145
+ ip nhrp map multicast 172.16.4.145
+ ip ospf network broadcast
+ ip ospf priority 0
+ tunnel source e0/0
+ tunnel mode gre multipoint
+ tunnel protection ipsec profile IPSEC-PROFILE-DMVPN
+ no shutdown
+exit
+
+! =====================================================
+! OSPF MULTI-AREA Y RUTA ESTATICA
+! =====================================================
+router ospf 10
+ router-id 6.6.6.6
+ network 172.16.4.216 0.0.0.3 area 0
+ network 172.16.4.220 0.0.0.3 area 0
+ network 172.16.4.192 0.0.0.15 area 0
+ network 172.16.3.192 0.0.0.31 area 10
+ network 172.16.3.0 0.0.0.63 area 20
+ network 172.16.4.48 0.0.0.15 area 30
+ default-information originate
+exit
+
+ip route 0.0.0.0 0.0.0.0 172.16.4.158
+
+end
+write memory

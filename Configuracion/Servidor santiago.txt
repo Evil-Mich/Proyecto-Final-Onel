@@ -1,0 +1,216 @@
+1. Configuración de Red y Salida a Internet Temporal
+A. Configurar Netplan
+Archivo: /etc/netplan/01-network-manager-all.yaml
+Comando para editar: sudo nano /etc/netplan/01-network-manager-all.yaml
+
+YAML
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    ens3:
+      dhcp4: no
+      addresses:
+        - 172.16.4.100/28
+      routes:
+        - to: 0.0.0.0/0
+          via: 172.16.4.97
+      nameservers:
+        addresses:
+          - 127.0.0.1
+          - 8.8.8.8
+        search:
+          - CaribeComms-ServiceQuisqueya.com.do
+Comando para aplicar: sudo netplan apply
+
+B. Forzar DNS Temporal (Para poder descargar todo)
+Comandos directos en la terminal:
+
+Bash
+sudo rm -f /etc/resolv.conf
+echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
+2. Descarga de Todos los Paquetes Necesarios
+Antes de configurar, instalaremos todo de un solo golpe. Cuando instales esto, si te sale una pantalla morada de Postfix, selecciona "Internet Site" y escribe empresadelgrupo.com.do.
+
+Comando directo en la terminal:
+
+Bash
+sudo apt update
+sudo apt install bind9 bind9utils bind9-doc dnsutils isc-dhcp-server nfs-kernel-server freeradius postfix dovecot-imapd dovecot-pop3d -y
+3. Configuración del Servidor DHCP
+A. Declarar la tarjeta de red
+Archivo: /etc/default/isc-dhcp-server
+Comando para editar: sudo nano /etc/default/isc-dhcp-server
+
+Busca la línea de IPv4 y déjala así:
+
+Plaintext
+INTERFACESv4="ens3"
+B. Crear los Pools Corporativos
+Archivo: /etc/dhcp/dhcpd.conf
+Comando para editar: sudo nano /etc/dhcp/dhcpd.conf (Borra todo lo que tenga y pega esto)
+
+Plaintext
+option domain-name "CaribeComms-ServiceQuisqueya.com.do";
+option domain-name-servers 172.16.4.100, 8.8.8.8;
+default-lease-time 600;
+max-lease-time 7200;
+authoritative;
+
+# VLAN 40 - SERVIDOR_UNICO
+subnet 172.16.4.96 netmask 255.255.255.240 {
+    range 172.16.4.101 172.16.4.110;
+    option routers 172.16.4.97;
+}
+
+# VLAN 10 - VENTAS
+subnet 172.16.4.0 netmask 255.255.255.224 {
+    range 172.16.4.4 172.16.4.30;
+    option routers 172.16.4.1;
+}
+
+# VLAN 20 - ADMINISTRACION
+subnet 172.16.4.112 netmask 255.255.255.240 {
+    range 172.16.4.116 172.16.4.126;
+    option routers 172.16.4.113;
+}
+
+# VLAN 30 - CENTRO_DATOS
+subnet 172.16.4.32 netmask 255.255.255.240 {
+    range 172.16.4.36 172.16.4.39;
+    range 172.16.4.41 172.16.4.46;
+    option routers 172.16.4.33;
+}
+Comandos para activar:
+
+Bash
+sudo systemctl restart isc-dhcp-server
+sudo systemctl enable isc-dhcp-server
+sudo apt update
+sudo apt install bind9 bind9utils bind9-doc -y
+
+# 2. Configurar archivo principal (named.conf)
+cat << 'EOF' | sudo tee /etc/bind/named.conf
+include "/etc/bind/named.conf.options";
+include "/etc/bind/named.conf.local";
+include "/etc/bind/named.conf.default-zones";
+EOF
+
+# 3. Configurar opciones de red (named.conf.options)
+cat << 'EOF' | sudo tee /etc/bind/named.conf.options
+options {
+    directory "/var/cache/bind";
+    forwarders {
+        8.8.8.8;
+        1.1.1.1;
+    };
+    dnssec-validation auto;
+    listen-on-v6 { any; };
+};
+EOF
+
+# 4. Declarar la zona corporativa (named.conf.local)
+cat << 'EOF' | sudo tee /etc/bind/named.conf.local
+zone "CaribeComms-ServiceQuisqueya.com.do" {
+    type master;
+    file "/etc/bind/db.caribecomms";
+};
+EOF
+
+# 5. Crear los registros de la página web y correos (db.caribecomms)
+cat << 'EOF' | sudo tee /etc/bind/db.caribecomms
+$TTL 604800
+@ IN SOA ns1.CaribeComms-ServiceQuisqueya.com.do. admin.CaribeComms-ServiceQuisqueya.com.do. (
+        3         ; Serial
+   604800         ; Refresh
+    86400         ; Retry
+  2419200         ; Expire
+   604800 )       ; Negative Cache TTL
+;
+@   IN  NS  ns1.CaribeComms-ServiceQuisqueya.com.do.
+@   IN  MX  10 ns1.CaribeComms-ServiceQuisqueya.com.do.
+ns1 IN  A   172.16.4.100
+www IN  A   17.6.0.38
+EOF
+
+# 6. Chequear que no haya errores de sintaxis
+sudo named-checkconf
+
+# 7. Reiniciar el servicio y dejarlo habilitado para que arranque solo
+sudo systemctl restart named
+sudo systemctl enable named
+sudo systemctl status named --no-pager
+
+echo "=========================================="
+echo "¡DNS CONFIGURADO Y CORRIENDO PERFECTAMENTE!"
+echo "=========================================="
+Comandos para activar:
+
+Bash
+sudo systemctl restart bind9
+sudo systemctl enable bind9
+5. Configuración de RADIUS (Autenticación)
+A. Declarar la red cliente (Switches)
+Archivo: /etc/freeradius/3.0/clients.conf
+Comando para editar: sudo nano /etc/freeradius/3.0/clients.conf
+(Agrega esto al final del archivo)
+
+Plaintext
+client 172.16.0.0/12 {
+    secret = empresa2cecompe
+    shortname = red_empresa2
+}
+B. Declarar los Usuarios
+Archivo: /etc/freeradius/3.0/users
+Comando para editar: sudo nano /etc/freeradius/3.0/users
+(Agrega esto en la parte superior, justo debajo de los comentarios)
+
+Plaintext
+fpaulino Cleartext-Password := "empresa2cecompe"
+ebenitez Cleartext-Password := "empresa2cecompe"
+mgeraldo Cleartext-Password := "empresa2cecompe"
+esolis Cleartext-Password := "empresa2cecompe"
+racosta Cleartext-Password := "empresa2cecompe"
+berasmo Cleartext-Password := "empresa2cecompe"
+Comandos para activar:
+
+Bash
+sudo systemctl restart freeradius
+sudo systemctl enable freeradius
+6. Configuración de NFS (Carpetas Compartidas)
+A. Crear la carpeta y asignar permisos
+Comandos directos en la terminal:
+
+Bash
+sudo mkdir -p /mnt/DatosEmpresa
+sudo chown nobody:nogroup /mnt/DatosEmpresa
+sudo chmod 777 /mnt/DatosEmpresa
+B. Exportar la carpeta a la red
+Archivo: /etc/exports
+Comando para editar: sudo nano /etc/exports
+(Agrega esto al final del archivo)
+
+Plaintext
+/mnt/DatosEmpresa 172.16.0.0/12(rw,sync,no_subtree_check)
+Comandos para activar:
+
+Bash
+sudo exportfs -a
+sudo systemctl restart nfs-kernel-server
+sudo systemctl enable nfs-kernel-server
+7. Usuarios del Sistema (Para Correo, NFS y Linux)
+Ejecuta este bloque completo en la terminal para crear a todos los integrantes y asignarles su buzón de correo automáticamente:
+
+Bash
+for usuario in fpaulino ebenitez mgeraldo esolis racosta berasmo; do
+    sudo useradd -m -s /bin/bash $usuario
+    echo "$usuario:empresa2cecompe" | sudo chpasswd
+done
+sudo systemctl restart postfix dovecot
+8. Apagar el "Intermediario" DNS de Ubuntu (Volver a Local)
+Para finalizar y dejar que tu servidor use sus propias zonas:
+Comandos directos en la terminal:
+
+Bash
+sudo rm -f /etc/resolv.conf
+echo "nameserver 127.0.0.1" | sudo tee /etc/resolv.conf

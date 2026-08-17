@@ -1,0 +1,266 @@
+enable
+configure terminal
+
+hostname B-SW2
+
+no ip domain-lookup
+service password-encryption
+
+enable secret Rey20
+
+banner motd #Acceso restringido - R-SW2 Barahona#
+
+username REY privilege 15 secret Rey20
+
+ip domain-name CaribeComms-ServiceQuisqueya.com.do
+
+crypto key generate rsa modulus 2048
+
+ip ssh version 2
+ip ssh time-out 60
+ip ssh authentication-retries 3
+ip ssh dh min size 2048
+
+
+line con 0
+ password Rey20
+ login
+ logging synchronous
+ exec-timeout 5 0
+exit
+
+
+line vty 0 4
+ transport input ssh
+ login local
+ exec-timeout 5 0
+exit
+
+
+ip routing
+
+
+! =====================================================
+! VLAN
+! =====================================================
+
+vlan 10
+ name PRODUCCION
+exit
+
+vlan 20
+ name ADMINISTRACION
+exit
+
+vlan 30
+ name SEGURIDAD
+exit
+
+vlan 999
+ name BLACKHOLE
+exit
+
+
+! =====================================================
+! ACL PRODUCCION
+! =====================================================
+
+ip access-list extended ACL_PRODUCCION
+
+ permit udp any any eq 67
+ permit udp any any eq 68
+
+ deny ip 172.16.3.64 0.0.0.63 172.16.3.224 0.0.0.31
+ deny ip 172.16.3.64 0.0.0.63 172.16.4.64 0.0.0.15
+
+ permit ip 172.16.3.64 0.0.0.63 any
+
+exit
+
+
+! =====================================================
+! ACL ADMINISTRACION
+! =====================================================
+
+ip access-list extended ACL_ADMINISTRACION
+
+ permit udp any any eq 67
+ permit udp any any eq 68
+
+ deny ip 172.16.3.224 0.0.0.31 172.16.3.64 0.0.0.63
+ deny ip 172.16.3.224 0.0.0.31 172.16.4.64 0.0.0.15
+
+ permit ip 172.16.3.224 0.0.0.31 any
+
+exit
+
+
+! =====================================================
+! ACL SEGURIDAD
+! =====================================================
+
+ip access-list extended ACL_SEGURIDAD
+
+ permit udp any any eq 67
+ permit udp any any eq 68
+ permit ip any any
+
+exit
+
+
+! =====================================================
+! ENLACE RUTEADO HACIA R-BARAHONA
+! =====================================================
+
+interface e0/0
+ description ENLACE-R-BARAHONA
+ no switchport
+ ip address 172.16.4.214 255.255.255.252
+ no shutdown
+exit
+
+
+! =====================================================
+! ETHERCHANNEL HACIA R-SW1
+! =====================================================
+
+interface range e0/1 - 2
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ switchport trunk native vlan 999
+ switchport trunk allowed vlan 10,20,30,999
+
+ channel-group 1 mode active
+
+ no shutdown
+exit
+
+
+interface port-channel 1
+ description ETHERCHANNEL-R-SW1
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ switchport trunk native vlan 999
+ switchport trunk allowed vlan 10,20,30,999
+
+ no shutdown
+exit
+
+
+! =====================================================
+! PUERTOS DE ACCESO
+! =====================================================
+
+interface range e0/3 , e1/0, e1/2
+ description PCs-PRODUCCION
+ switchport mode access
+ switchport access vlan 10
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+ no shutdown
+exit
+
+
+interface e1/1
+ description PC-SEGURIDAD
+ switchport mode access
+ switchport access vlan 30
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+ no shutdown
+exit
+
+
+
+! =====================================================
+! SVI PRODUCCION
+! =====================================================
+
+interface vlan 10
+ description VLAN-PRODUCCION
+
+ ip address 172.16.3.67 255.255.255.192
+
+  ip helper-address 172.16.4.209
+
+ standby 10 ip 172.16.3.65
+ standby 10 priority 100
+ standby 10 preempt
+
+ ip access-group ACL_PRODUCCION in
+
+ no shutdown
+exit
+
+
+! =====================================================
+! SVI ADMINISTRACION
+! =====================================================
+
+interface vlan 20
+ description VLAN-ADMINISTRACION
+
+ ip address 172.16.3.227 255.255.255.224
+
+ ip helper-address 172.16.4.209
+
+
+ standby 20 ip 172.16.3.225
+ standby 20 priority 100
+ standby 20 preempt
+
+ ip access-group ACL_ADMINISTRACION in
+
+ no shutdown
+exit
+
+
+! =====================================================
+! SVI SEGURIDAD
+! =====================================================
+
+interface vlan 30
+ description VLAN-SEGURIDAD
+
+ ip address 172.16.4.67 255.255.255.240
+
+ ip helper-address 172.16.4.209
+
+ standby 30 ip 172.16.4.65
+ standby 30 priority 100
+ standby 30 preempt
+
+ ip access-group ACL_SEGURIDAD in
+
+ ip ospf priority 0
+
+ no shutdown
+exit
+
+
+! =====================================================
+! OSPF MULTI-AREA
+! =====================================================
+
+router ospf 10
+ router-id 5.5.5.2
+ network 172.16.4.212 0.0.0.3 area 0
+ network 172.16.3.64 0.0.0.63 area 10
+ network 172.16.3.224 0.0.0.31 area 20
+ network 172.16.4.64 0.0.0.15 area 30
+ passive-interface vlan 10
+ passive-interface vlan 20
+ no passive-interface vlan 30
+exit
+
+
+! =====================================================
+! SPANNING TREE
+! =====================================================
+
+spanning-tree vlan 10,20 root secondary
+spanning-tree vlan 30 root primary
+
+
+end
+write memory
